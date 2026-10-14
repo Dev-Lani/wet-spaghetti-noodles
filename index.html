@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ToolBox - File converters and utilities</title>
+  <meta name="description" content="Converters and utilities for PDFs, documents, images and code, sorted by the job.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="#top" aria-label="ToolBox home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-name">ToolBox</span>
+      </a>
+
+      <nav class="main-nav" id="mainNav" aria-label="Main"></nav>
+
+      <div class="header-actions">
+        <button type="button" class="link-btn">Login</button>
+        <button type="button" class="signup-btn">Sign up</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="wrap">
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow" id="heroMeta"></p>
+            <h1>File tools, sorted by the job.</h1>
+            <p class="lede">Converters and utilities for PDFs, documents, images and code. Search by format (try &ldquo;png&rdquo; or &ldquo;csv&rdquo;) or browse a category.</p>
+
+            <div class="search-wrap">
+              <input type="search" id="searchInput" placeholder="Search tools or formats" autocomplete="off" aria-label="Search tools">
+              <kbd class="search-hint" aria-hidden="true">/</kbd>
+            </div>
+          </div>
+
+          <div class="dropzone" id="dropzone" aria-label="Drop a file here. Preview only, files are not processed yet.">
+            <span class="dz-formats" aria-hidden="true">PDF &middot; DOCX &middot; JPG &middot; PNG &middot; CSV &middot; JSON</span>
+            <strong class="dz-title">Drop a file here</strong>
+            <span class="dz-sub">Then pick the tool that matches its format.</span>
+            <span class="dz-note">Preview only. Files are not processed yet.</span>
+          </div>
+        </div>
+
+        <div class="pills" id="pills" role="tablist" aria-label="Filter by category"></div>
+      </div>
+    </section>
+
+    <div class="wrap tools-area" id="tools">
+      <div id="popular"></div>
+      <div id="categories"></div>
+      <p class="no-results" id="noResults" hidden>No tools match that search. Try a format name like &ldquo;pdf&rdquo; or &ldquo;json&rdquo;.</p>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>&copy; <span id="year"></span> ToolBox &middot; Tool pages are not built yet.</p>
+    </div>
+  </footer>
+
+  <script src="js/script.js"></script>
+  <script src="js/devtools.js"></script>
+</body>
+</html>
