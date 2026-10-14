@@ -740,3 +740,15 @@ body:has(dialog[open]) { overflow: hidden; }
   .td-body { padding: var(--s4); }
   .td-head { padding: var(--s3) var(--s4); }
 }
+
+.td-field input[type="text"],
+.td-field input[type="file"] {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--card);
+  color: var(--ink);
+  font: 400 0.9375rem var(--font-ui);
+}
+.td-field input[type="text"]:focus { border-color: var(--brand-text); outline: 0; }

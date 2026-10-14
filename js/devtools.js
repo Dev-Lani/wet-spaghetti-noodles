@@ -216,4 +216,155 @@
       .then(() => { render(); text.focus(); })
       .catch(() => setState("Could not load vendor/qrcode.min.js. Check that the vendor folder is next to index.html.", true, false));
   };
+
+    // ---------- PDF to Word ----------
+  const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+  const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  const DOCX = "https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js";
+
+  TOOLS["PDF to Word"] = (root) => {
+    root.innerHTML = `
+      <div class="td-controls">
+        <label class="td-field"><span>PDF file</span>
+          <input type="file" class="p2w-file" accept="application/pdf,.pdf">
+        </label>
+        <label class="td-field"><span>Pages (optional, e.g. 1-3,5)</span>
+          <input type="text" class="p2w-pages" placeholder="All pages" spellcheck="false">
+        </label>
+        <div class="td-actions">
+          <button type="button" class="td-btn td-btn-primary" disabled>Convert to DOCX</button>
+        </div>
+        <p class="td-msg" role="status" style="text-align:left"></p>
+      </div>`;
+
+    const $ = (s) => root.querySelector(s);
+    const fileEl = $(".p2w-file"), pagesEl = $(".p2w-pages");
+    const btn = $(".td-btn-primary"), msg = $(".td-msg");
+    const say = (t, warn) => { msg.textContent = t; msg.classList.toggle("warn", !!warn); };
+
+    let libsReady = false;
+    say("Loading converter…");
+    Promise.all([loadScript(PDFJS), loadScript(DOCX)])
+      .then(() => {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+        libsReady = true;
+        say("Pick a PDF to start.");
+        sync();
+      })
+      .catch(() => say("Could not load the libraries. Check your internet connection.", true));
+
+    const sync = () => (btn.disabled = !(libsReady && fileEl.files[0]));
+    fileEl.addEventListener("change", sync);
+
+    function parsePages(str, total) {
+      if (!str.trim()) return Array.from({ length: total }, (_, i) => i + 1);
+      const set = new Set();
+      str.split(",").forEach((part) => {
+        const m = part.trim().match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+        if (!m) return;
+        const a = +m[1], b = m[2] ? +m[2] : a;
+        for (let i = Math.min(a, b); i <= Math.max(a, b); i++) if (i >= 1 && i <= total) set.add(i);
+      });
+      return [...set].sort((x, y) => x - y);
+    }
+
+    // Group text items into lines, then lines into paragraphs.
+    async function pageLines(page) {
+      const { items } = await page.getTextContent();
+      const rows = [];
+      items
+        .filter((it) => it.str && it.str.trim() !== "")
+        .map((it) => ({
+          s: it.str,
+          x: it.transform[4],
+          y: it.transform[5],
+          w: it.width,
+          size: Math.abs(it.transform[3]) || it.height || 10,
+        }))
+        .sort((a, b) => b.y - a.y || a.x - b.x)
+        .forEach((it) => {
+          const row = rows.find((r) => Math.abs(r.y - it.y) < Math.max(2, it.size * 0.4));
+          if (row) row.items.push(it);
+          else rows.push({ y: it.y, items: [it] });
+        });
+      return rows.map((r) => {
+        r.items.sort((a, b) => a.x - b.x);
+        let text = "", prevEnd = null;
+        r.items.forEach((it) => {
+          if (prevEnd !== null && it.x - prevEnd > it.size * 0.15 && !text.endsWith(" ") && !it.s.startsWith(" ")) text += " ";
+          text += it.s;
+          prevEnd = it.x + it.w;
+        });
+        return { y: r.y, size: Math.max(...r.items.map((i) => i.size)), text: text.trim() };
+      });
+    }
+
+    function toParagraphs(lines, bodySize) {
+      const paras = [];
+      let cur = null, prev = null;
+      lines.forEach((ln) => {
+        const isHead = ln.size > bodySize * 1.25 && ln.text.length < 120;
+        const gap = prev ? prev.y - ln.y : Infinity;
+        const sizeChanged = prev && Math.abs(prev.size - ln.size) > bodySize * 0.15;
+        if (!cur || gap > ln.size * 1.6 || sizeChanged || isHead || cur.head) {
+          cur = { text: ln.text, head: isHead, size: ln.size };
+          paras.push(cur);
+        } else if (cur.text.endsWith("-")) {
+          cur.text = cur.text.slice(0, -1) + ln.text;
+        } else {
+          cur.text += " " + ln.text;
+        }
+        prev = ln;
+      });
+      return paras;
+    }
+
+    btn.addEventListener("click", async () => {
+      const file = fileEl.files[0];
+      if (!file) return;
+      btn.disabled = true;
+      try {
+        say("Reading PDF…");
+        const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+        const wanted = parsePages(pagesEl.value, pdf.numPages);
+        if (!wanted.length) throw new Error("No valid pages in that range. This PDF has " + pdf.numPages + " page(s).");
+
+        const pageData = [];
+        for (const n of wanted) {
+          say(`Extracting page ${n} of ${pdf.numPages}…`);
+          pageData.push(await pageLines(await pdf.getPage(n)));
+        }
+
+        const allSizes = pageData.flat().map((l) => l.size).sort((a, b) => a - b);
+        const chars = pageData.flat().reduce((n, l) => n + l.text.length, 0);
+        if (chars < 20) throw new Error("No selectable text found. This looks like a scanned PDF, which needs OCR first.");
+        const bodySize = allSizes[Math.floor(allSizes.length / 2)] || 10;
+
+        const { Document, Paragraph, TextRun, HeadingLevel, Packer } = docx;
+        const children = [];
+        pageData.forEach((lines, i) => {
+          const paras = toParagraphs(lines, bodySize);
+          paras.forEach((p, j) => {
+            children.push(new Paragraph({
+              pageBreakBefore: i > 0 && j === 0,
+              heading: p.head ? (p.size > bodySize * 1.6 ? HeadingLevel.HEADING_1 : HeadingLevel.HEADING_2) : undefined,
+              spacing: { after: 160 },
+              children: [new TextRun({ text: p.text })],
+            }));
+          });
+        });
+
+        say("Building DOCX…");
+        const doc = new Document({ sections: [{ children }] });
+        const blob = await Packer.toBlob(doc);
+        download(blob, file.name.replace(/\.pdf$/i, "") + ".docx");
+        say(`Done. ${wanted.length} page(s) converted. Text and headings only; images and complex layouts are not kept.`);
+      } catch (err) {
+        say(err.message || "Conversion failed.", true);
+      } finally {
+        sync();
+      }
+    });
+  };
 })();
+
