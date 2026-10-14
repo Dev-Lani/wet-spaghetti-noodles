@@ -1,5 +1,16 @@
 <?php
 
+/*
+ * Where Download / Download All save files.
+ * Layout: DOWNLOAD_DIR/<username>/<filename>
+ * Default is a "downloads" folder next to api/ and assets/.
+ * To save somewhere else, change it, e.g.:
+ *   define('DOWNLOAD_DIR', 'C:/Users/YourName/Downloads/InstaSave');
+ */
+if (!defined('DOWNLOAD_DIR')) {
+    define('DOWNLOAD_DIR', __DIR__ . '/../downloads');
+}
+
 function body_json()
 {
     $raw = file_get_contents('php://input');
@@ -97,40 +108,55 @@ function clean_user($username)
 }
 
 
-function random5()
+/*
+ * Stable 7-digit number derived from the media itself.
+ *
+ * Instagram CDN URLs carry expiring query params (oh, oe, _nc_ohc...)
+ * and the host changes (scontent-xxx), so the full URL is NEVER hashed.
+ * Only the URL PATH is used (e.g. /v/t51.2885-15/123_456_n.jpg), which
+ * is the CDN file identity and stays the same across fetches.
+ */
+function stable_number($url)
 {
-    return str_pad(
-        (string) random_int(0, 99999),
-        5,
-        '0',
-        STR_PAD_LEFT
-    );
+    $path = (string) parse_url((string) $url, PHP_URL_PATH);
+
+    if ($path === '') {
+        $path = (string) $url;
+    }
+
+    $n = hexdec(substr(md5($path), 0, 8)) % 10000000;
+
+    return str_pad((string) $n, 7, '0', STR_PAD_LEFT);
 }
 
 
+/*
+ * Deterministic filename: same media -> same name, always.
+ * No time(), no random. Missing timestamp -> fixed fallback.
+ */
 function filename_for($item)
 {
-    $timestamp = !empty(
-        $item['taken_at_timestamp']
-    )
-        ? (float) $item['taken_at_timestamp']
-        : time();
+    $timestamp = !empty($item['taken_at_timestamp'])
+        ? (int) $item['taken_at_timestamp']
+        : 0;
+
+    $datePart = $timestamp > 0
+        ? gmdate('Ymd_His', $timestamp)
+        : '00000000_000000';
 
     $username = clean_user(
         $item['username'] ?? 'unknown_user'
     );
 
-    $extension = !empty(
-        $item['is_video']
-    )
+    $extension = !empty($item['is_video'])
         ? 'mp4'
         : 'jpg';
 
     return $username
         . '_'
-        . date('Ymd_His', $timestamp)
+        . $datePart
         . '_'
-        . random5()
+        . stable_number($item['url'] ?? '')
         . '.'
         . $extension;
 }
@@ -921,6 +947,35 @@ function extract_media($data)
         }
     }
 
+
+    /*
+     * Single source of truth for filenames. On a (very rare) collision
+     * inside one result, add a deterministic index suffix (_2, _3...).
+     */
+    $used = [];
+
+    foreach ($media as $i => $m) {
+
+        $name = filename_for($m);
+
+        if (isset($used[$name])) {
+
+            $dot  = strrpos($name, '.');
+            $base = substr($name, 0, $dot);
+            $ext  = substr($name, $dot);
+            $n    = 2;
+
+            while (isset($used[$base . '_' . $n . $ext])) {
+                $n++;
+            }
+
+            $name = $base . '_' . $n . $ext;
+        }
+
+        $used[$name] = true;
+
+        $media[$i]['filename'] = $name;
+    }
 
     return $media;
 }
